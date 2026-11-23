@@ -26,11 +26,20 @@ if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
 }
 
 // ----------------------------------------------------------------------------
-// Frontend Route
+// Frontend Route (Modern Angular dist or fallback)
 // ----------------------------------------------------------------------------
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'templates', 'index.html'));
-});
+const distBrowserPath = path.join(__dirname, 'dist', 'utility-dashboard', 'browser');
+
+if (fs.existsSync(distBrowserPath)) {
+  app.use(express.static(distBrowserPath));
+  app.get('/', (req, res) => {
+    res.sendFile(path.join(distBrowserPath, 'index.html'));
+  });
+} else if (fs.existsSync(path.join(__dirname, 'templates', 'index.html'))) {
+  app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'templates', 'index.html'));
+  });
+}
 
 // ----------------------------------------------------------------------------
 // API Endpoints
