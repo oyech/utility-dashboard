@@ -1,6 +1,6 @@
-.git
+node_modules/
+uploads/
+temp_upload.xlsx
 .DS_Store
 ._*
-temp_upload.xlsx
-*.pyc
-__pycache__
+.git

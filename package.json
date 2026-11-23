@@ -1,0 +1,28 @@
+{
+  "name": "utility-dashboard",
+  "version": "1.0.0",
+  "description": "TA RESIDENCE - Utility Monitoring & Billing Dashboard (AngularJS 1.8 + Node.js)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node -e \"console.log('No tests specified')\""
+  },
+  "keywords": [
+    "angularjs",
+    "dashboard",
+    "utility",
+    "billing",
+    "exceljs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "express": "^5.3.0",
+    "multer": "^2.5.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

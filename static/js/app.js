@@ -168,7 +168,16 @@
           });
         },
 
-        exportExcel: function (unit, periods) {
+        exportExcel: function (unit, periods, chartImage) {
+          if (chartImage) {
+            return $http.post('/api/export-excel', {
+              unit: unit,
+              periods: periods || [],
+              chartImage: chartImage
+            }, {
+              responseType: 'blob'
+            });
+          }
           return $http.get('/api/export-excel', {
             params: {
               unit: unit,
@@ -422,7 +431,17 @@
 
           vm.isExporting = true;
 
-          UtilityService.exportExcel(vm.currentUnit.unit, vm.selectedPeriods)
+          var chartCanvas = document.querySelector('canvas[chart-usage]');
+          var chartImage = null;
+          if (chartCanvas && typeof chartCanvas.toDataURL === 'function') {
+            try {
+              chartImage = chartCanvas.toDataURL('image/png');
+            } catch (err) {
+              console.warn('Gagal membaca gambar chart canvas:', err);
+            }
+          }
+
+          UtilityService.exportExcel(vm.currentUnit.unit, vm.selectedPeriods, chartImage)
             .then(function (response) {
               var blob = new Blob([response.data], {
                 type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
