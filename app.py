@@ -6,7 +6,7 @@ from flask import Flask, request, jsonify, render_template, send_file
 from excel_exporter import build_utility_workbook
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
-DB_PATH = os.path.join(os.path.dirname(__file__), 'utility.db')
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'utility.db')
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -15,7 +15,8 @@ def get_db():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    html_path = os.path.join(os.path.dirname(__file__), 'templates', 'index.html')
+    return send_file(html_path)
 
 @app.route('/api/units', methods=['GET'])
 def get_units():

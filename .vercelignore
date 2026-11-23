@@ -1,0 +1,6 @@
+.git
+.DS_Store
+._*
+temp_upload.xlsx
+*.pyc
+__pycache__
