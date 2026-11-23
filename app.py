@@ -1,7 +1,9 @@
 import os
+import re
 import sqlite3
 import openpyxl
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file
+from excel_exporter import build_utility_workbook
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 DB_PATH = os.path.join(os.path.dirname(__file__), 'utility.db')
@@ -56,31 +58,68 @@ def get_towers():
     conn.close()
     return jsonify(towers)
 
-@app.route('/api/usage', methods=['GET'])
-def get_usage():
-    unit = request.args.get('unit', '').strip()
-    periods = request.args.getlist('periods')
-    
-    if not unit:
-        return jsonify({'error': 'Unit is required'}), 400
-        
+def _fetch_unit_usage(unit, periods):
     conn = get_db()
     cur = conn.cursor()
-    
+
     query = "SELECT * FROM billing_data WHERE unit = ?"
     params = [unit]
-    
+
     if periods and len(periods) > 0:
         placeholders = ','.join(['?'] * len(periods))
         query += f" AND period IN ({placeholders})"
         params.extend(periods)
-        
+
     query += " ORDER BY period ASC"
     cur.execute(query, params)
     rows = [dict(row) for row in cur.fetchall()]
     conn.close()
-    
+    return rows
+
+@app.route('/api/usage', methods=['GET'])
+def get_usage():
+    unit = request.args.get('unit', '').strip()
+    periods = request.args.getlist('periods')
+
+    if not unit:
+        return jsonify({'error': 'Unit is required'}), 400
+
+    rows = _fetch_unit_usage(unit, periods)
     return jsonify(rows)
+
+@app.route('/api/export-excel', methods=['GET'])
+def export_excel():
+    unit = request.args.get('unit', '').strip()
+    periods = [p.strip() for p in request.args.getlist('periods') if p.strip()]
+
+    if not unit:
+        return jsonify({'error': 'Unit is required'}), 400
+
+    rows = _fetch_unit_usage(unit, periods)
+    if not rows:
+        return jsonify({'error': 'Data tidak ditemukan untuk unit dan periode yang dipilih'}), 404
+
+    output = build_utility_workbook(rows)
+
+    safe_unit = re.sub(r'[^A-Za-z0-9_-]+', '_', unit).strip('_') or 'UNIT'
+    row_periods = [r['period'] for r in rows if r.get('period')]
+    if len(row_periods) == 1:
+        period_slug = re.sub(r'[^A-Za-z0-9_-]+', '_', row_periods[0])
+    elif len(row_periods) > 1:
+        p_start = re.sub(r'[^A-Za-z0-9_-]+', '_', row_periods[0])
+        p_end = re.sub(r'[^A-Za-z0-9_-]+', '_', row_periods[-1])
+        period_slug = f"{p_start}_sd_{p_end}"
+    else:
+        period_slug = "all"
+
+    filename = f"Laporan_Utilitas_{safe_unit}_{period_slug}.xlsx"
+
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename,
+    )
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():

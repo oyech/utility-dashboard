@@ -16,6 +16,116 @@
       #printable-slip, #printable-slip * { visibility: visible; }
       #printable-slip { position: absolute; left: 0; top: 0; width: 100%; }
     }
+
+    @property --arc-start {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: 0deg;
+    }
+    @property --arc-end {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: 0deg;
+    }
+    @property --progress-dash-animation {
+      syntax: "*";
+      inherits: false;
+      initial-value: , progress-dash 3s ease-in-out infinite;
+    }
+
+    progress.loading-spinner:indeterminate::-webkit-progress-bar,
+    progress.loading-spinner:indeterminate::-webkit-progress-value,
+    progress.loading-spinner:indeterminate::-moz-progress-bar,
+    progress.loading-spinner:indeterminate::slider-fill {
+      display: none;
+      background: none;
+    }
+
+    progress.loading-spinner:indeterminate {
+      --_from: calc(90deg + var(--arc-start, 0deg));
+      --_to: calc(90deg + var(--arc-end, 158deg));
+      --size: 16px;
+      --thickness: 2px;
+      --spinner-color: currentColor;
+      --track-color: rgba(255, 255, 255, 0.25);
+      --spinner-duration: 1.5s;
+      --_used-spinner-duration: var(--spinner-duration);
+
+      position: relative;
+      display: inline-block;
+      vertical-align: middle;
+      width: var(--size);
+      height: var(--size);
+      border-radius: 50%;
+      appearance: none;
+      background: conic-gradient(
+          from var(--_from),
+          var(--spinner-color) calc(var(--_to) - var(--_from)),
+          transparent 0
+        )
+        var(--track-color);
+
+      animation:
+        progress-spin var(--_used-spinner-duration) linear infinite
+        var(--progress-dash-animation, );
+    }
+
+    @supports (background-clip: border-area) {
+      progress.loading-spinner:indeterminate {
+        background-clip: border-area;
+        border: var(--thickness) solid transparent;
+        background-origin: border-box;
+      }
+    }
+
+    @supports not (background-clip: border-area) {
+      progress.loading-spinner:indeterminate {
+        --clip-boundary: calc(100% - var(--thickness));
+        mask-image: radial-gradient(
+          farthest-side,
+          transparent var(--clip-boundary),
+          black var(--clip-boundary)
+        );
+        border: 0;
+      }
+    }
+
+    @media (forced-colors: active) {
+      progress.loading-spinner:indeterminate {
+        forced-color-adjust: none;
+        --spinner-color: CanvasText;
+        --track-color: Canvas;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      progress.loading-spinner:indeterminate {
+        --_used-spinner-duration: 6s;
+        --progress-dash-animation: ;
+        --arc-end: 158deg;
+      }
+    }
+
+    @keyframes progress-spin {
+      to {
+        rotate: 1turn;
+      }
+    }
+
+    @keyframes progress-dash {
+      from {
+        --arc-start: 0deg;
+        --arc-end: 3deg;
+      }
+      50% {
+        --arc-start: 100deg;
+        --arc-end: 358deg;
+      }
+      to {
+        --arc-start: 360deg;
+        --arc-end: 363deg;
+      }
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -116,8 +226,11 @@
             <div class="text-blue-300">Daya Listrik</div>
             <div id="displayKVA" class="text-sm font-semibold text-white">8.8 KVA (MCB 40A)</div>
           </div>
-          <div>
-            <button onclick="window.print()" class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg border border-white/20 transition">
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" data-export-excel-btn onclick="exportToExcel()" class="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold px-3 py-1.5 rounded-lg shadow transition">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Export Excel
+            </button>
+            <button type="button" onclick="window.print()" class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg border border-white/20 transition">
               <i data-lucide="printer" class="w-4 h-4"></i> Cetak Slip
             </button>
           </div>
@@ -188,10 +301,13 @@
 
       <!-- Table Section -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+        <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap justify-between items-center gap-2">
           <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
             <i data-lucide="table" class="w-4 h-4 text-blue-600"></i> Rincian Pemakaian & Biaya Per Periode
           </h3>
+          <button type="button" data-export-excel-btn onclick="exportToExcel()" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i> Export Excel (Rincian + Grafik)
+          </button>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-xs text-left">
@@ -495,6 +611,73 @@
       document.getElementById('metricPeriodCount').innerText = `${records.length} Bulan`;
 
       renderChart(labels, elecData, waterData);
+    }
+
+    async function exportToExcel() {
+      if (!currentUnit) {
+        alert('Silakan pilih unit terlebih dahulu sebelum export Excel.');
+        return;
+      }
+
+      const uniquePeriods = [...new Set(selectedPeriods)];
+      if (uniquePeriods.length === 0) {
+        alert('Silakan pilih minimal 1 periode bulan untuk diekspor.');
+        return;
+      }
+
+      const buttons = document.querySelectorAll('[data-export-excel-btn]');
+      const originalContents = Array.from(buttons).map(btn => btn.innerHTML);
+
+      buttons.forEach(btn => {
+        btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
+        btn.innerHTML = '<progress aria-label="Menyiapkan file Excel" class="loading-spinner"></progress><span>Menyiapkan Excel...</span>';
+      });
+
+      try {
+        const params = new URLSearchParams();
+        params.append('unit', currentUnit);
+        uniquePeriods.forEach(p => params.append('periods', p));
+
+        const res = await fetch(`/api/export-excel?${params.toString()}`);
+        if (!res.ok) {
+          let errMsg = 'Gagal membuat file Excel.';
+          try {
+            const errJson = await res.json();
+            if (errJson.error) errMsg = errJson.error;
+          } catch (_) {}
+          throw new Error(errMsg);
+        }
+
+        const blob = await res.blob();
+        let filename = `Laporan_Utilitas_${currentUnit}.xlsx`;
+        const disposition = res.headers.get('Content-Disposition');
+        if (disposition) {
+          const match = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)["']?/i);
+          if (match && match[1]) {
+            filename = decodeURIComponent(match[1]);
+          }
+        }
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (err) {
+        console.error(err);
+        alert(err.message || 'Terjadi kesalahan saat mengekspor Excel.');
+      } finally {
+        buttons.forEach((btn, idx) => {
+          btn.disabled = false;
+          btn.removeAttribute('aria-busy');
+          btn.innerHTML = originalContents[idx];
+        });
+        lucide.createIcons();
+      }
     }
 
     function renderChart(labels, elecData, waterData) {
