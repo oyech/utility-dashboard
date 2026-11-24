@@ -28,19 +28,32 @@ async function initDb() {
         return stmt.all(...params);
       },
       run(sql, params = []) {
-        return db.prepare(sql).run(...params);
+        const stmt = db.prepare(sql);
+        return stmt.run(...params);
       },
       exec(sql) {
         return db.exec(sql);
       }
     };
   } catch (err) {
-    console.warn('[DB] node:sqlite not available, using sql.js WebAssembly:', err.message);
+    console.warn('[DB] node:sqlite not available, falling back to sql.js WebAssembly:', err.message);
   }
 
   // 2. Fallback to sql.js (Pure WebAssembly SQLite - 100% universal across all Node/Vercel versions)
   const initSqlJs = require('sql.js');
-  const SQL = await initSqlJs();
+  const wasmCandidates = [
+    path.join(__dirname, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
+    path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
+  ];
+  let wasmPath = null;
+  for (const wp of wasmCandidates) {
+    if (fs.existsSync(wp)) {
+      wasmPath = wp;
+      break;
+    }
+  }
+
+  const SQL = await initSqlJs(wasmPath ? { locateFile: () => wasmPath } : {});
   const filebuffer = fs.readFileSync(dbPath);
   const db = new SQL.Database(filebuffer);
 

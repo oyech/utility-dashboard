@@ -4,7 +4,7 @@
   "outputDirectory": "dist/utility-dashboard/browser",
   "functions": {
     "api/index.js": {
-      "includeFiles": "utility.db"
+      "includeFiles": "{utility.db,node_modules/sql.js/dist/sql-wasm.wasm}"
     }
   },
   "rewrites": [

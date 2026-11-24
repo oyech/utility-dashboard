@@ -13,13 +13,11 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/static', express.static(path.join(__dirname, 'static')));
 
-// Upload configuration
-const upload = multer({ dest: path.join(__dirname, 'uploads/') });
-
-// Ensure uploads folder exists
-if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
-  fs.mkdirSync(path.join(__dirname, 'uploads'), { recursive: true });
-}
+// Upload configuration using in-memory storage (serverless read-only filesystem compatible)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }
+});
 
 // ----------------------------------------------------------------------------
 // Frontend Route (Modern Angular dist or fallback)
@@ -187,17 +185,15 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
   const period = (req.body.period || '').trim();
   if (!period) {
-    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     return res.status(400).json({ error: 'Period is required (e.g. 2026-11)' });
   }
   if (!req.file.originalname.endsWith('.xlsx')) {
-    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     return res.status(400).json({ error: 'Only .xlsx files are supported' });
   }
 
   try {
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.readFile(req.file.path);
+    await wb.xlsx.load(req.file.buffer);
     const ws = wb.getWorksheet('ME4a') || wb.worksheets[0];
 
     const rowsToInsert = [];
@@ -263,17 +259,12 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     }
     db.exec('COMMIT');
 
-    if (fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-
     res.json({ message: `Berhasil mengimpor ${rowsToInsert.length} unit untuk periode ${period}!` });
   } catch (err) {
     try {
       const db = await getDb();
       db.exec('ROLLBACK');
     } catch (_) {}
-    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     console.error('Error /api/upload:', err);
     res.status(500).json({ error: err.message });
   }
