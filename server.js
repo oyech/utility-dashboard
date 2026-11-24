@@ -2,15 +2,11 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const { DatabaseSync } = require('node:sqlite');
 const ExcelJS = require('exceljs');
+const { getDb } = require('./db');
 const { buildUtilityWorkbook } = require('./excel-exporter');
 
 const app = express();
-const DB_PATH = path.join(__dirname, 'utility.db');
-
-// Initialize SQLite database
-const db = new DatabaseSync(DB_PATH);
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
@@ -46,8 +42,9 @@ if (fs.existsSync(distBrowserPath)) {
 // ----------------------------------------------------------------------------
 
 // 1. Get units with optional search query & tower filter
-app.get('/api/units', (req, res) => {
+app.get('/api/units', async (req, res) => {
   try {
+    const db = await getDb();
     const search = (req.query.q || '').trim();
     const tower = (req.query.tower || '').trim();
 
@@ -64,8 +61,7 @@ app.get('/api/units', (req, res) => {
     }
 
     query += ' ORDER BY unit LIMIT 50';
-    const stmt = db.prepare(query);
-    const rows = stmt.all(...params);
+    const rows = db.all(query, params);
     res.json(rows);
   } catch (err) {
     console.error('Error /api/units:', err);
@@ -74,9 +70,10 @@ app.get('/api/units', (req, res) => {
 });
 
 // 2. Get distinct periods
-app.get('/api/periods', (req, res) => {
+app.get('/api/periods', async (req, res) => {
   try {
-    const rows = db.prepare('SELECT DISTINCT period FROM billing_data ORDER BY period DESC').all();
+    const db = await getDb();
+    const rows = db.all('SELECT DISTINCT period FROM billing_data ORDER BY period DESC');
     const periods = rows.map(r => r.period);
     res.json(periods);
   } catch (err) {
@@ -86,9 +83,10 @@ app.get('/api/periods', (req, res) => {
 });
 
 // 3. Get distinct towers
-app.get('/api/towers', (req, res) => {
+app.get('/api/towers', async (req, res) => {
   try {
-    const rows = db.prepare("SELECT DISTINCT tower FROM billing_data WHERE tower IS NOT NULL AND tower != '' ORDER BY tower").all();
+    const db = await getDb();
+    const rows = db.all("SELECT DISTINCT tower FROM billing_data WHERE tower IS NOT NULL AND tower != '' ORDER BY tower");
     const towers = rows.map(r => r.tower);
     res.json(towers);
   } catch (err) {
@@ -98,7 +96,8 @@ app.get('/api/towers', (req, res) => {
 });
 
 // Helper to fetch usage records
-function fetchUnitUsage(unit, periods) {
+async function fetchUnitUsage(unit, periods) {
+  const db = await getDb();
   let periodList = [];
   if (Array.isArray(periods)) {
     periodList = periods.filter(p => p && p.trim());
@@ -116,18 +115,18 @@ function fetchUnitUsage(unit, periods) {
   }
 
   query += ' ORDER BY period ASC';
-  return db.prepare(query).all(...params);
+  return db.all(query, params);
 }
 
 // 4. Get usage for a unit across periods
-app.get('/api/usage', (req, res) => {
+app.get('/api/usage', async (req, res) => {
   try {
     const unit = (req.query.unit || '').trim();
     if (!unit) {
       return res.status(400).json({ error: 'Unit is required' });
     }
 
-    const rows = fetchUnitUsage(unit, req.query.periods);
+    const rows = await fetchUnitUsage(unit, req.query.periods);
     res.json(rows);
   } catch (err) {
     console.error('Error /api/usage:', err);
@@ -148,7 +147,7 @@ async function handleExportExcel(req, res) {
       return res.status(400).json({ error: 'Unit is required' });
     }
 
-    const rows = fetchUnitUsage(unit, periods);
+    const rows = await fetchUnitUsage(unit, periods);
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: 'Data tidak ditemukan untuk unit dan periode yang dipilih' });
     }
@@ -246,21 +245,21 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       ]);
     });
 
-    // Execute SQLite transaction
+    const db = await getDb();
     db.exec('BEGIN TRANSACTION');
-    db.prepare('DELETE FROM billing_data WHERE period = ?').run(period);
+    db.run('DELETE FROM billing_data WHERE period = ?', [period]);
 
-    const insertStmt = db.prepare(`
+    const insertSql = `
       INSERT INTO billing_data (
         period, no, tower, unit, owner_name, mcb, kva, note,
         elec_meter_start, elec_meter_end, elec_usage, kwh_min, jam_nyala, elec_subtotal, elec_total,
         water_meter_start, water_meter_end, water_usage, water_m1, water_m2, water_m3,
         water_cost_m1, water_cost_m2, water_cost_m3, water_fixed_cost, water_total, grand_total
       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `);
+    `;
 
     for (const r of rowsToInsert) {
-      insertStmt.run(...r);
+      db.run(insertSql, r);
     }
     db.exec('COMMIT');
 
@@ -270,7 +269,10 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     res.json({ message: `Berhasil mengimpor ${rowsToInsert.length} unit untuk periode ${period}!` });
   } catch (err) {
-    db.exec('ROLLBACK');
+    try {
+      const db = await getDb();
+      db.exec('ROLLBACK');
+    } catch (_) {}
     if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     console.error('Error /api/upload:', err);
     res.status(500).json({ error: err.message });
@@ -284,6 +286,6 @@ module.exports = app;
 if (require.main === module) {
   const PORT = process.env.PORT || 5005;
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Node.js + AngularJS] Utility Dashboard listening on http://0.0.0.0:${PORT}`);
+    console.log(`[Modern Angular + Node.js] Utility Dashboard listening on http://0.0.0.0:${PORT}`);
   });
 }
