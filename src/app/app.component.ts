@@ -97,6 +97,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
           this.loadUsage();
         }
         this.refreshIcons();
+        this.cdr.detectChanges();
       },
       error: (err) => console.error('Error fetching periods:', err)
     });
@@ -153,6 +154,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
         console.error('Error searching units:', err);
         this.searchResults = [];
         this.isSearching = false;
+        this.cdr.detectChanges();
       }
     });
   }
@@ -182,6 +184,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
         console.error('Error loading usage:', err);
         this.records = [];
         this.calculateMetrics([]);
+        this.cdr.detectChanges();
         this.renderChart();
       }
     });
@@ -306,12 +309,14 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
         setTimeout(() => window.URL.revokeObjectURL(url), 1000);
         this.isExporting = false;
         this.refreshIcons();
+        this.cdr.detectChanges();
       },
       error: (err) => {
         console.error('Error exporting Excel:', err);
         alert('Terjadi kesalahan saat mengekspor file Excel.');
         this.isExporting = false;
         this.refreshIcons();
+        this.cdr.detectChanges();
       }
     });
   }
@@ -366,12 +371,14 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
           type: 'success',
           message: res.message || 'Berhasil mengimpor data!'
         };
+        this.cdr.detectChanges();
         setTimeout(() => {
           this.closeUploadModal();
           this.fetchPeriods();
           if (this.currentUnit) {
             this.loadUsage();
           }
+          this.cdr.detectChanges();
         }, 1500);
       },
       error: (err) => {
@@ -381,6 +388,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
           type: 'error',
           message: err.error?.error || 'Terjadi kesalahan saat upload.'
         };
+        this.cdr.detectChanges();
       }
     });
   }
