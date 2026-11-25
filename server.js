@@ -178,6 +178,95 @@ async function handleExportExcel(req, res) {
 app.get('/api/export-excel', handleExportExcel);
 app.post('/api/export-excel', handleExportExcel);
 
+// Normalize and guard electricity minimum charge calculation during Excel import
+function buildNormalizedBillingRow(period, unitVal, extractVal) {
+  const no = extractVal(1);
+  const tower = extractVal(2);
+  const unit = String(unitVal).trim();
+  const ownerName = extractVal(4);
+  const mcb = extractVal(5);
+  const kvaRaw = extractVal(6);
+  let note = extractVal(7);
+
+  const kva = Number(kvaRaw);
+  // Skip footer/summary rows that lack a unit note or valid KVA rating
+  if (!note && (!Number.isFinite(kva) || kva <= 0)) {
+    return null;
+  }
+
+  const elecStart = extractVal(8);
+  const elecEnd = extractVal(9);
+  let elecUsage = extractVal(10);
+  let kwhMin = extractVal(11);
+  const jamNyala = extractVal(12);
+  let elecSubtotal = extractVal(13);
+  let elecTotal = extractVal(14);
+
+  const waterStart = extractVal(15);
+  const waterEnd = extractVal(16);
+  const waterUsage = extractVal(17);
+  const waterM1 = extractVal(18);
+  const waterM2 = extractVal(19);
+  const waterM3 = extractVal(20);
+  const waterCostM1 = extractVal(21);
+  const waterCostM2 = extractVal(22);
+  const waterCostM3 = extractVal(23);
+  const waterFixedCost = extractVal(24);
+  const waterTotal = extractVal(25);
+  let grandTotal = extractVal(26);
+
+  if (Number.isFinite(kva) && kva > 0) {
+    const expectedKwhMin = Math.round(40 * kva * 10000) / 10000;
+    const numericUsage = Number(elecUsage);
+    const kwhMinNum = Number(kwhMin);
+    const isKwhMinInvalid = !Number.isFinite(kwhMinNum) || Math.abs(kwhMinNum - expectedKwhMin) > 0.05;
+
+    if (isKwhMinInvalid) {
+      kwhMin = expectedKwhMin;
+      if (Number.isFinite(numericUsage)) {
+        const isMinCharge = numericUsage < expectedKwhMin;
+        note = isMinCharge ? 'MIN CHARGE' : 'NORMAL';
+        if (isMinCharge) {
+          const tariff = kva <= 2.2 ? 1444.7 : 1699.53;
+          elecSubtotal = expectedKwhMin * tariff;
+          elecTotal = elecSubtotal * 1.024;
+          grandTotal = (elecTotal + (Number(waterTotal) || 0)) * 1.11;
+        }
+      }
+    }
+  }
+
+  return [
+    period,
+    no,
+    tower,
+    unit,
+    ownerName,
+    mcb,
+    kvaRaw,
+    note,
+    elecStart,
+    elecEnd,
+    elecUsage,
+    kwhMin,
+    jamNyala,
+    elecSubtotal,
+    elecTotal,
+    waterStart,
+    waterEnd,
+    waterUsage,
+    waterM1,
+    waterM2,
+    waterM3,
+    waterCostM1,
+    waterCostM2,
+    waterCostM3,
+    waterFixedCost,
+    waterTotal,
+    grandTotal
+  ];
+}
+
 // 6. Upload Excel file and import data
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
@@ -210,35 +299,10 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         return val !== undefined && val !== null ? val : null;
       };
 
-      rowsToInsert.push([
-        period,
-        extractVal(1),
-        extractVal(2),
-        String(unitVal).trim(),
-        extractVal(4),
-        extractVal(5),
-        extractVal(6),
-        extractVal(7),
-        extractVal(8),
-        extractVal(9),
-        extractVal(10),
-        extractVal(11),
-        extractVal(12),
-        extractVal(13),
-        extractVal(14),
-        extractVal(15),
-        extractVal(16),
-        extractVal(17),
-        extractVal(18),
-        extractVal(19),
-        extractVal(20),
-        extractVal(21),
-        extractVal(22),
-        extractVal(23),
-        extractVal(24),
-        extractVal(25),
-        extractVal(26)
-      ]);
+      const normalizedRow = buildNormalizedBillingRow(period, unitVal, extractVal);
+      if (normalizedRow) {
+        rowsToInsert.push(normalizedRow);
+      }
     });
 
     const db = await getDb();
