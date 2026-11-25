@@ -219,19 +219,30 @@ function buildNormalizedBillingRow(period, unitVal, extractVal) {
     const expectedKwhMin = Math.round(40 * kva * 10000) / 10000;
     const numericUsage = Number(elecUsage);
     const kwhMinNum = Number(kwhMin);
-    const isKwhMinInvalid = !Number.isFinite(kwhMinNum) || Math.abs(kwhMinNum - expectedKwhMin) > 0.05;
 
-    if (isKwhMinInvalid) {
+    if (!Number.isFinite(kwhMinNum) || Math.abs(kwhMinNum - expectedKwhMin) > 0.05) {
       kwhMin = expectedKwhMin;
-      if (Number.isFinite(numericUsage)) {
-        const isMinCharge = numericUsage < expectedKwhMin;
-        note = isMinCharge ? 'MIN CHARGE' : 'NORMAL';
-        if (isMinCharge) {
-          const tariff = kva <= 2.2 ? 1444.7 : 1699.53;
-          elecSubtotal = expectedKwhMin * tariff;
-          elecTotal = elecSubtotal * 1.024;
-          grandTotal = (elecTotal + (Number(waterTotal) || 0)) * 1.11;
-        }
+    }
+
+    if (Number.isFinite(numericUsage)) {
+      const isMinCharge = numericUsage < expectedKwhMin;
+      note = isMinCharge ? 'MIN CHARGE' : 'NORMAL';
+      const tariff = kva <= 2.2 ? 1444.7 : 1699.53;
+      const billableKwh = isMinCharge ? expectedKwhMin : numericUsage;
+      const expectedSubtotal = billableKwh * tariff;
+      const expectedTotal = expectedSubtotal * 1.024;
+      const subtotalNum = Number(elecSubtotal);
+      const totalNum = Number(elecTotal);
+
+      if (
+        !Number.isFinite(subtotalNum) ||
+        Math.abs(subtotalNum - expectedSubtotal) >= 1 ||
+        !Number.isFinite(totalNum) ||
+        Math.abs(totalNum - expectedTotal) >= 1
+      ) {
+        elecSubtotal = expectedSubtotal;
+        elecTotal = expectedTotal;
+        grandTotal = (elecTotal + (Number(waterTotal) || 0)) * 1.11;
       }
     }
   }
